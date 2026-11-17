@@ -13,6 +13,9 @@ export interface SavedDoc {
   step: number;
   updatedAt: string;
   generatedAt?: string;
+  /** Reçu de paiement signé par le serveur. */
+  recu?: string;
+  paidAt?: string;
 }
 
 const KEY = "actefacile.documents.v1";

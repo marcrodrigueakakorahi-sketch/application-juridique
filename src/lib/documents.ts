@@ -1,6 +1,8 @@
-"use client";
-// Génération des fichiers PDF et Word côté navigateur.
+// Génération des fichiers PDF et Word, exécutée côté serveur
+// (le document n'est fabriqué qu'après vérification du paiement).
 
+import { jsPDF } from "jspdf";
+import { Document, Packer, Paragraph, TextRun, AlignmentType, HeadingLevel, Footer, Table, TableRow, TableCell, WidthType, BorderStyle } from "docx";
 import type { ActDefinition } from "./types";
 import { plainText, type RenderedBlock } from "./moteur";
 
@@ -8,26 +10,14 @@ const DISCLAIMER =
   "Document généré à partir d'un modèle et de vos réponses. Il ne remplace pas le conseil personnalisé d'un professionnel du droit.";
 
 // Les polices standard du PDF ne savent pas afficher les espaces fines insécables.
-const clean = (s: string) => s.replace(/[  ]/g, " ").replace(/[’]/g, "'");
+const clean = (s: string) => s.replace(/[\u202f\u00a0]/g, " ").replace(/\u2019/g, "'");
 
-function fileName(act: ActDefinition, ext: string) {
+export function fileName(act: ActDefinition, ext: "pdf" | "docx") {
   const date = new Date().toISOString().slice(0, 10);
   return `${act.id}-${date}.${ext}`;
 }
 
-function saveBlob(blob: Blob, name: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = name;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-export async function exportPDF(act: ActDefinition, blocks: RenderedBlock[]) {
-  const { jsPDF } = await import("jspdf");
+export function buildPDF(blocks: RenderedBlock[]): Uint8Array {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const M = 20;
   const W = 210 - 2 * M;
@@ -105,12 +95,10 @@ export async function exportPDF(act: ActDefinition, blocks: RenderedBlock[]) {
     doc.setTextColor(0);
   }
 
-  doc.save(fileName(act, "pdf"));
+  return new Uint8Array(doc.output("arraybuffer"));
 }
 
-export async function exportDOCX(act: ActDefinition, blocks: RenderedBlock[]) {
-  const docx = await import("docx");
-  const { Document, Packer, Paragraph, TextRun, AlignmentType, HeadingLevel, Footer, Table, TableRow, TableCell, WidthType, BorderStyle } = docx;
+export async function buildDOCX(act: ActDefinition, blocks: RenderedBlock[]): Promise<Uint8Array> {
 
   const runs = (text: string, opts: { bold?: boolean; italics?: boolean; size?: number } = {}) =>
     text.split("\n").map((line, i) => new TextRun({ text: line, break: i > 0 ? 1 : undefined, font: "Times New Roman", size: opts.size ?? 22, bold: opts.bold, italics: opts.italics }));
@@ -158,6 +146,5 @@ export async function exportDOCX(act: ActDefinition, blocks: RenderedBlock[]) {
     ],
   });
 
-  const blob = await Packer.toBlob(doc);
-  saveBlob(blob, fileName(act, "docx"));
+  return new Uint8Array(await Packer.toBuffer(doc));
 }

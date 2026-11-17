@@ -35,7 +35,10 @@ export default function MesDocuments() {
             return (
               <li key={d.id} className="flex flex-wrap items-center gap-4 px-5 py-4">
                 <div className="min-w-0 flex-1">
-                  <div className="font-medium text-marine-900">{d.title}</div>
+                  <div className="font-medium text-marine-900">
+                    {d.title}
+                    {d.recu && <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">Payé</span>}
+                  </div>
                   <div className="text-xs text-slate-500">
                     Modifié le {fmt(d.updatedAt)} · {d.generatedAt ? `téléchargé le ${fmt(d.generatedAt)}` : `brouillon complété à ${pct} %`}
                   </div>
