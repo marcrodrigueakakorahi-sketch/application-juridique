@@ -6,7 +6,7 @@ import { getActe } from "@/lib/catalogue";
 import { formatMontant } from "@/lib/nombres";
 import { completion, defaultData, renderDocument, validateStep, visibleFields } from "@/lib/moteur";
 import { getDoc, newId, saveDoc } from "@/lib/stockage";
-import { exportDOCX, exportPDF } from "@/lib/export";
+import { initierPaiement, memoriserPaiement, modePaiement, telecharger, type ModePaiement } from "@/lib/paiement-client";
 import type { ActDefinition, Field, FormData, Warning } from "@/lib/types";
 import { DocumentPreview } from "./DocumentPreview";
 
@@ -29,7 +29,16 @@ function WizardInner({ actId }: { actId: string }) {
   const [step, setStep] = useState(0);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [mobileView, setMobileView] = useState<"form" | "preview">("form");
-  const [busy, setBusy] = useState<"pdf" | "docx" | null>(null);
+  const [busy, setBusy] = useState<"pdf" | "docx" | "payer" | null>(null);
+  const [recu, setRecu] = useState<string | undefined>(undefined);
+  const [paidAt, setPaidAt] = useState<string | undefined>(undefined);
+  const [generatedAt, setGeneratedAt] = useState<string | undefined>(undefined);
+  const [mode, setMode] = useState<ModePaiement | null>(null);
+  const [erreur, setErreur] = useState<string | null>(null);
+
+  useEffect(() => {
+    modePaiement().then(setMode);
+  }, []);
 
   // Reprise d'un brouillon (?doc=…) ou création d'un nouveau document.
   useEffect(() => {
@@ -39,6 +48,9 @@ function WizardInner({ actId }: { actId: string }) {
       setDocId(saved.id);
       setData({ ...defaultData(act), ...saved.data });
       setStep(Math.min(saved.step, steps.length));
+      setRecu(saved.recu);
+      setPaidAt(saved.paidAt);
+      setGeneratedAt(saved.generatedAt);
     } else {
       const id = newId();
       setDocId(id);
@@ -50,8 +62,8 @@ function WizardInner({ actId }: { actId: string }) {
   // Sauvegarde automatique.
   useEffect(() => {
     if (!docId) return;
-    saveDoc({ id: docId, actId: act.id, title: act.title, data, step, updatedAt: "" });
-  }, [docId, data, step, act]);
+    saveDoc({ id: docId, actId: act.id, title: act.title, data, step, updatedAt: "", recu, paidAt, generatedAt });
+  }, [docId, data, step, act, recu, paidAt, generatedAt]);
 
   const blocks = useMemo(() => renderDocument(act, data), [act, data]);
   const warnings = useMemo(() => act.checks?.(data) ?? [], [act, data]);
@@ -92,12 +104,36 @@ function WizardInner({ actId }: { actId: string }) {
   };
 
   const download = async (kind: "pdf" | "docx") => {
+    if (!docId) return;
     setBusy(kind);
+    setErreur(null);
     try {
-      if (kind === "pdf") await exportPDF(act, blocks);
-      else await exportDOCX(act, blocks);
-      if (docId) saveDoc({ id: docId, actId: act.id, title: act.title, data, step, updatedAt: "", generatedAt: new Date().toISOString() });
+      await telecharger(act.id, docId, data, recu, kind);
+      setGeneratedAt(new Date().toISOString());
+    } catch (e) {
+      setErreur(e instanceof Error ? e.message : "Le téléchargement a échoué.");
     } finally {
+      setBusy(null);
+    }
+  };
+
+  const payer = async () => {
+    if (!docId) return;
+    setBusy("payer");
+    setErreur(null);
+    try {
+      const r = await initierPaiement(act.id, docId);
+      if (r.recu) {
+        setRecu(r.recu);
+        setPaidAt(new Date().toISOString());
+        setBusy(null);
+      } else if (r.url) {
+        // Le brouillon est déjà sauvegardé ; on mémorise la transaction pour la page de retour.
+        memoriserPaiement({ transactionId: r.transactionId, docId, actId: act.id });
+        window.location.assign(r.url);
+      }
+    } catch (e) {
+      setErreur(e instanceof Error ? e.message : "Le paiement n'a pas pu démarrer.");
       setBusy(null);
     }
   };
@@ -158,7 +194,7 @@ function WizardInner({ actId }: { actId: string }) {
                 </div>
               </>
             ) : (
-              <Review act={act} pct={pct} warnings={warnings} blocking={blocking} busy={busy} onDownload={download} onBack={() => setStep(steps.length - 1)} />
+              <Review act={act} pct={pct} warnings={warnings} blocking={blocking} busy={busy} paye={act.prix === 0 || Boolean(recu)} mode={mode} erreur={erreur} onPay={payer} onDownload={download} onBack={() => setStep(steps.length - 1)} />
             )}
           </div>
           {!isReview && <Warnings warnings={warnings} className="mt-4" />}
@@ -166,7 +202,7 @@ function WizardInner({ actId }: { actId: string }) {
 
         <div className={mobileView === "form" ? "hidden lg:block" : ""}>
           <div className="lg:sticky lg:top-4">
-            <DocumentPreview blocks={blocks} />
+            <DocumentPreview blocks={blocks} filigrane={act.prix > 0 && !recu} />
           </div>
         </div>
       </div>
@@ -253,7 +289,21 @@ function Warnings({ warnings, className = "" }: { warnings: Warning[]; className
   );
 }
 
-function Review({ act, pct, warnings, blocking, busy, onDownload, onBack }: { act: ActDefinition; pct: number; warnings: Warning[]; blocking: boolean; busy: "pdf" | "docx" | null; onDownload: (k: "pdf" | "docx") => void; onBack: () => void }) {
+interface ReviewProps {
+  act: ActDefinition;
+  pct: number;
+  warnings: Warning[];
+  blocking: boolean;
+  busy: "pdf" | "docx" | "payer" | null;
+  paye: boolean;
+  mode: ModePaiement | null;
+  erreur: string | null;
+  onPay: () => void;
+  onDownload: (k: "pdf" | "docx") => void;
+  onBack: () => void;
+}
+
+function Review({ act, pct, warnings, blocking, busy, paye, mode, erreur, onPay, onDownload, onBack }: ReviewProps) {
   const ready = pct === 100 && !blocking;
   return (
     <div>
@@ -262,15 +312,44 @@ function Review({ act, pct, warnings, blocking, busy, onDownload, onBack }: { ac
       <Warnings warnings={warnings} className="mt-4" />
       {pct < 100 && <p className="mt-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">Certaines informations obligatoires manquent ({pct} % complété). Elles sont surlignées en jaune dans l&apos;aperçu.</p>}
 
-      <div className="mt-6 grid gap-3 sm:grid-cols-2">
-        <button type="button" disabled={!ready || busy !== null} onClick={() => onDownload("pdf")} className="rounded-lg bg-accent-500 px-4 py-3 font-semibold text-marine-900 hover:bg-accent-400 disabled:cursor-not-allowed disabled:opacity-50">
-          {busy === "pdf" ? "Génération…" : "Télécharger en PDF"}
-        </button>
-        <button type="button" disabled={!ready || busy !== null} onClick={() => onDownload("docx")} className="rounded-lg border border-marine-800 px-4 py-3 font-semibold text-marine-800 hover:bg-marine-50 disabled:cursor-not-allowed disabled:opacity-50">
-          {busy === "docx" ? "Génération…" : "Télécharger en Word"}
-        </button>
-      </div>
-      {act.prix > 0 && <p className="mt-2 text-xs text-slate-500">Version de démonstration : le paiement ({formatMontant(act.prix)}, par Mobile Money ou carte) sera activé dans une prochaine version.</p>}
+      {paye ? (
+        <>
+          {act.prix > 0 && (
+            <p className="mt-6 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+              ✓ Paiement reçu. Vous pouvez modifier vos réponses et retélécharger ce document autant de fois que nécessaire.
+            </p>
+          )}
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <button type="button" disabled={!ready || busy !== null} onClick={() => onDownload("pdf")} className="rounded-lg bg-accent-500 px-4 py-3 font-semibold text-marine-900 hover:bg-accent-400 disabled:cursor-not-allowed disabled:opacity-50">
+              {busy === "pdf" ? "Génération…" : "Télécharger en PDF"}
+            </button>
+            <button type="button" disabled={!ready || busy !== null} onClick={() => onDownload("docx")} className="rounded-lg border border-marine-800 px-4 py-3 font-semibold text-marine-800 hover:bg-marine-50 disabled:cursor-not-allowed disabled:opacity-50">
+              {busy === "docx" ? "Génération…" : "Télécharger en Word"}
+            </button>
+          </div>
+        </>
+      ) : (
+        <div className="mt-6 rounded-xl border border-marine-200 bg-marine-50 p-5">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <span className="font-semibold text-marine-900">Prix de ce document</span>
+            <span className="text-2xl font-bold text-marine-900">{formatMontant(act.prix)}</span>
+          </div>
+          <p className="mt-1 text-sm text-slate-600">Paiement unique, en PDF et en Word, modifiable et retéléchargeable à volonté.</p>
+          <div className="mt-3 flex flex-wrap gap-2 text-xs">
+            {["Orange Money", "MTN MoMo", "Moov Money", "Wave"].map((m) => (
+              <span key={m} className="rounded-full bg-white px-2.5 py-1 font-medium text-slate-700 ring-1 ring-slate-200">{m}</span>
+            ))}
+          </div>
+          <button type="button" disabled={!ready || busy !== null || mode === null} onClick={onPay} className="mt-4 w-full rounded-lg bg-accent-500 px-4 py-3 font-semibold text-marine-900 hover:bg-accent-400 disabled:cursor-not-allowed disabled:opacity-50">
+            {busy === "payer" ? "Redirection vers le paiement…" : mode === "demo" ? `Simuler le paiement de ${formatMontant(act.prix)}` : `Payer ${formatMontant(act.prix)} par Mobile Money`}
+          </button>
+          {mode === "demo" && (
+            <p className="mt-2 text-xs text-amber-800">Mode démonstration : aucun argent n&apos;est débité. Le vrai paiement s&apos;active dès que les clés CinetPay sont configurées.</p>
+          )}
+          {mode === "cinetpay" && <p className="mt-2 text-xs text-slate-500">Paiement sécurisé par CinetPay. Vous serez redirigé vers la page de paiement, puis ramené ici.</p>}
+        </div>
+      )}
+      {erreur && <p role="alert" className="mt-3 rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-800">{erreur}</p>}
 
       {act.instructions && (
         <div className="mt-8">

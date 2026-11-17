@@ -10,10 +10,14 @@ function Segments({ block }: { block: RenderedBlock }) {
   );
 }
 
-export function DocumentPreview({ blocks }: { blocks: RenderedBlock[] }) {
+export function DocumentPreview({ blocks, filigrane = false }: { blocks: RenderedBlock[]; filigrane?: boolean }) {
   return (
-    <div className="max-h-[80vh] overflow-y-auto rounded-xl border border-slate-200 bg-slate-100 p-3 sm:p-5">
-      <div className="doc-preview mx-auto max-w-[680px] whitespace-pre-line bg-white px-6 py-8 text-[13.5px] leading-relaxed text-slate-900 shadow sm:px-12 sm:py-12">
+    <div className="apercu-document max-h-[80vh] overflow-y-auto rounded-xl border border-slate-200 bg-slate-100 p-3 sm:p-5">
+      <div
+        className={`doc-preview relative mx-auto max-w-[680px] whitespace-pre-line bg-white px-6 py-8 text-[13.5px] leading-relaxed text-slate-900 shadow sm:px-12 sm:py-12 ${filigrane ? "filigrane select-none" : ""}`}
+        onCopy={filigrane ? (e) => e.preventDefault() : undefined}
+        onContextMenu={filigrane ? (e) => e.preventDefault() : undefined}
+      >
         {blocks.map((b, i) => {
           switch (b.type) {
             case "title":
