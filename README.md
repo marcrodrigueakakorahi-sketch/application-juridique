@@ -23,6 +23,17 @@ Application qui collecte et propose des actes juridiques aux particuliers. Plate
 
 > Le texte intégral de la loi n° 2019-576 n'a pas pu être consulté directement : les règles ont été recoupées à partir du portail servicepublic.gouv.ci, du ministère de la Construction et de commentaires juridiques. **Les numéros d'articles et les modèles doivent être vérifiés par un avocat inscrit au Barreau de Côte d'Ivoire avant la mise en production.**
 
+## Application installable (PWA)
+
+ActeFacile s'installe sur le téléphone **sans passer par un store** :
+
+- **Android (Chrome)** : bouton « Installer l'app » dans l'en-tête ou bandeau sur l'accueil.
+- **iPhone (Safari)** : le bouton affiche la marche à suivre (Partager → « Sur l'écran d'accueil »).
+
+L'application s'ouvre alors en plein écran avec son icône. Un service worker (`public/sw.js`) garde en cache les pages de base et les pages déjà visitées : on peut consulter ses brouillons et continuer à remplir un formulaire hors connexion ; le paiement et le téléchargement demandent internet. Les appels `/api` ne sont jamais mis en cache.
+
+Après une modification importante du service worker, incrémentez `VERSION` dans `public/sw.js` pour forcer la mise à jour chez les utilisateurs.
+
 ## Lancer le projet
 
 ```bash

@@ -2,11 +2,13 @@ import Link from "next/link";
 import { ACTES_DISPONIBLES, CATALOGUE, CATEGORIES } from "@/lib/catalogue";
 import { ActCard } from "@/components/ActCard";
 import { SearchBox } from "@/components/SearchBox";
+import { BandeauInstallation } from "@/components/Installation";
 import type { Category } from "@/lib/types";
 
 export default function Home() {
   return (
     <>
+      <BandeauInstallation />
       <section className="bg-gradient-to-b from-marine-900 to-marine-800 text-white">
         <div className="mx-auto flex max-w-6xl flex-col items-center px-4 py-16 text-center sm:py-20">
           <h1 className="max-w-3xl text-3xl font-bold leading-tight sm:text-5xl">

@@ -1,8 +1,19 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import "./globals.css";
+import { BoutonInstaller } from "@/components/Installation";
+
+export const viewport: Viewport = {
+  themeColor: "#0f1f3a",
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+};
 
 export const metadata: Metadata = {
+  applicationName: "ActeFacile",
+  appleWebApp: { capable: true, title: "ActeFacile", statusBarStyle: "black-translucent" },
+  formatDetection: { telephone: false },
   title: "ActeFacile — Vos actes juridiques, simplement",
   description: "Trouvez et rédigez le bon contrat ou acte juridique en quelques minutes, conforme au droit ivoirien : bail, reconnaissance de dette, mise en demeure…",
 };
@@ -11,7 +22,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="fr-CI">
       <body className="min-h-screen flex flex-col antialiased">
-        <header className="bg-marine-900 text-white">
+        <header className="bg-marine-900 pt-[env(safe-area-inset-top)] text-white">
           <nav className="mx-auto max-w-6xl px-4 py-3 flex flex-wrap items-center gap-x-6 gap-y-2">
             <Link href="/" className="text-xl font-bold tracking-tight">
               Acte<span className="text-accent-400">Facile</span>
@@ -21,6 +32,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <Link href="/orientation" className="hover:text-white">Trouver mon acte</Link>
               <Link href="/mes-documents" className="hover:text-white">Mes documents</Link>
             </div>
+            <BoutonInstaller />
           </nav>
         </header>
         <main className="flex-1">{children}</main>
